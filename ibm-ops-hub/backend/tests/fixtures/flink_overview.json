@@ -1,0 +1,11 @@
+{
+  "taskmanagers": 4,
+  "slots-total": 16,
+  "slots-available": 4,
+  "jobs-running": 3,
+  "jobs-finished": 10,
+  "jobs-cancelled": 1,
+  "jobs-failed": 2,
+  "flink-version": "1.20.0",
+  "flink-commit": "abc123"
+}

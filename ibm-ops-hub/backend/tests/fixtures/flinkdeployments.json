@@ -1,0 +1,27 @@
+{
+  "apiVersion": "flink.apache.org/v1beta1",
+  "kind": "FlinkDeploymentList",
+  "items": [
+    {
+      "metadata": {
+        "name": "ep-customer-events-processor",
+        "uid": "aaa-bbb-ccc-001",
+        "namespace": "event-automation",
+        "creationTimestamp": "2026-02-25T10:00:00Z"
+      },
+      "spec": {
+        "image": "icr.io/cpopen/ibm-eventautomation-flink:1.17.1",
+        "job": {"state": "running", "parallelism": 4}
+      },
+      "status": {
+        "jobStatus": {
+          "state": "RUNNING",
+          "startTime": "2026-02-25T10:00:05Z",
+          "savepointInfo": {"lastPeriodicSavepointTimestamp": 1740477600000}
+        },
+        "jobManagerDeploymentStatus": "READY",
+        "reconciliationStatus": {"state": "DEPLOYED"}
+      }
+    }
+  ]
+}

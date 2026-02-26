@@ -1,0 +1,31 @@
+{
+  "resources": [
+    {
+      "metadata": {
+        "asset_id": "spark-job-001",
+        "name": "ETL_Customer_Data_Load",
+        "description": "Loads customer data from source systems"
+      },
+      "entity": {
+        "job": {
+          "asset_ref": "notebook-ref-001",
+          "asset_ref_type": "notebook"
+        }
+      }
+    },
+    {
+      "metadata": {
+        "asset_id": "spark-job-002",
+        "name": "ML_Model_Training_Pipeline",
+        "description": "Trains recommendation model"
+      },
+      "entity": {
+        "job": {
+          "asset_ref": "script-ref-002",
+          "asset_ref_type": "script"
+        }
+      }
+    }
+  ],
+  "total_count": 2
+}

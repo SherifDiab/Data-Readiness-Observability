@@ -1,0 +1,31 @@
+{
+  "resources": [
+    {
+      "metadata": {
+        "asset_id": "ds-flow-001",
+        "name": "DS_Customer_Transform",
+        "asset_ref_type": "data_intg_flow"
+      },
+      "entity": {
+        "job": {
+          "asset_ref": "flow-ref-001",
+          "asset_ref_type": "data_intg_flow"
+        }
+      }
+    },
+    {
+      "metadata": {
+        "asset_id": "ds-flow-002",
+        "name": "DS_Product_Inventory_Sync",
+        "asset_ref_type": "data_intg_flow"
+      },
+      "entity": {
+        "job": {
+          "asset_ref": "flow-ref-002",
+          "asset_ref_type": "data_intg_flow"
+        }
+      }
+    }
+  ],
+  "total_count": 2
+}

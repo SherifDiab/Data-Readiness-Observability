@@ -1,0 +1,29 @@
+{
+  "events": [
+    {
+      "datetime": "2026-02-26T10:00:00Z",
+      "api_name": "Customer API",
+      "api_version": "1.0.0",
+      "request_method": "GET",
+      "uri_path": "/customers",
+      "status_code": 200,
+      "time_to_serve_request": 45.2,
+      "developer_org_name": "acme-corp",
+      "app_name": "app-1",
+      "client_ip": "10.0.0.1"
+    },
+    {
+      "datetime": "2026-02-26T10:00:01Z",
+      "api_name": "Order API",
+      "api_version": "1.0.0",
+      "request_method": "POST",
+      "uri_path": "/orders",
+      "status_code": 500,
+      "time_to_serve_request": 1200.5,
+      "developer_org_name": "beta-solutions",
+      "app_name": "app-2",
+      "client_ip": "10.0.0.2"
+    }
+  ],
+  "count": 2
+}
