@@ -74,44 +74,70 @@ if ($iisOk) {
 Write-Host ""
 
 # ---------------------------------------------------------------------------
-# 2. .NET 8 Hosting Bundle
+# 2. .NET 8 SDK  (needed to BUILD the app with dotnet publish)
+#    AND .NET 8 Hosting Bundle  (needed to RUN the app in IIS)
+#    NOTE: The SDK installer includes the runtime, but NOT the IIS Hosting
+#          module. You need BOTH on a build+serve machine.
 # ---------------------------------------------------------------------------
-Write-Host "[2/6] Checking .NET 8 Hosting Bundle..." -ForegroundColor Yellow
+Write-Host "[2/6] Checking .NET 8 SDK and Hosting Bundle..." -ForegroundColor Yellow
 
-$dotnetOk = $false
+# --- 2a. SDK check ---
+$sdkOk = $false
 try {
-    $dotnetVer = & dotnet --version 2>$null
-    if ($dotnetVer -and ($dotnetVer -match "^8\.")) { $dotnetOk = $true }
+    $sdkList = & dotnet --list-sdks 2>$null
+    if ($sdkList -match "^8\.") { $sdkOk = $true }
 } catch {}
 
-# Also check registry (ASP.NET Core Runtime may be installed without SDK)
-if (-not $dotnetOk) {
-    $aspKey = "HKLM:\SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedhost"
-    if (Test-Path $aspKey) { $dotnetOk = $true }
+if ($sdkOk) {
+    Write-Host "  [OK] .NET 8 SDK already installed." -ForegroundColor Green
+} else {
+    Write-Host "  [NOT FOUND] .NET 8 SDK not detected." -ForegroundColor Red
+    Write-Host "  Trying auto-download..." -ForegroundColor Gray
+
+    # .NET 8 SDK 8.0.401 Windows x64
+    $sdkUrl  = "https://download.visualstudio.microsoft.com/download/pr/f18288f8-5bb4-41c5-9f9e-95e44c0f4ab2/e9b3ebfbc1e6c26e3f2aa3a7e8fd0b3f/dotnet-sdk-8.0.401-win-x64.exe"
+    $sdkFile = "$env:TEMP\dotnet-sdk-8.exe"
+
+    if (Try-Download -Url $sdkUrl -OutFile $sdkFile) {
+        Write-Host "  Download OK. Installing .NET 8 SDK..."
+        Start-Process -FilePath $sdkFile -ArgumentList "/quiet", "/norestart" -Wait -ErrorAction SilentlyContinue
+        $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine")
+        Write-Host "  [OK] .NET 8 SDK installed." -ForegroundColor Green
+    } else {
+        Write-Host "  [ACTION REQUIRED] Auto-download blocked. Install manually:" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "    https://dotnet.microsoft.com/en-us/download/dotnet/8.0" -ForegroundColor Cyan
+        Write-Host "    --> Under 'SDK' column --> Windows --> x64 Installer" -ForegroundColor White
+        Write-Host ""
+        $manualStepsNeeded += ".NET 8 SDK (for dotnet publish)"
+    }
 }
 
-if ($dotnetOk) {
-    Write-Host "  [OK] .NET 8 already installed." -ForegroundColor Green
+# --- 2b. Hosting Bundle check (IIS integration module) ---
+$hostingOk = $false
+$aspKey = "HKLM:\SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedhost"
+if (Test-Path $aspKey) { $hostingOk = $true }
+
+if ($hostingOk) {
+    Write-Host "  [OK] .NET 8 Hosting Bundle (IIS module) already installed." -ForegroundColor Green
 } else {
     Write-Host "  [NOT FOUND] .NET 8 Hosting Bundle not detected." -ForegroundColor Red
     Write-Host "  Trying auto-download..." -ForegroundColor Gray
 
-    $dotnetUrl  = "https://download.visualstudio.microsoft.com/download/pr/9d6b6b6f-8b48-4f7b-b970-4a4b59e66cf3/b21b64cf24e6d2bf13dd8a64dd4f3e91/dotnet-hosting-8.0.8-win.exe"
-    $dotnetFile = "$env:TEMP\dotnet-hosting-8.exe"
+    $hostingUrl  = "https://download.visualstudio.microsoft.com/download/pr/9d6b6b6f-8b48-4f7b-b970-4a4b59e66cf3/b21b64cf24e6d2bf13dd8a64dd4f3e91/dotnet-hosting-8.0.8-win.exe"
+    $hostingFile = "$env:TEMP\dotnet-hosting-8.exe"
 
-    if (Try-Download -Url $dotnetUrl -OutFile $dotnetFile) {
-        Write-Host "  Download OK. Installing..."
-        Start-Process -FilePath $dotnetFile -ArgumentList "/quiet", "/norestart" -Wait -ErrorAction SilentlyContinue
-        $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine")
+    if (Try-Download -Url $hostingUrl -OutFile $hostingFile) {
+        Write-Host "  Download OK. Installing .NET 8 Hosting Bundle..."
+        Start-Process -FilePath $hostingFile -ArgumentList "/quiet", "/norestart" -Wait -ErrorAction SilentlyContinue
         Write-Host "  [OK] .NET 8 Hosting Bundle installed." -ForegroundColor Green
     } else {
-        Write-Host "  [ACTION REQUIRED] Auto-download blocked. Download manually:" -ForegroundColor Yellow
+        Write-Host "  [ACTION REQUIRED] Auto-download blocked. Install manually:" -ForegroundColor Yellow
         Write-Host ""
-        Write-Host "    https://dotnet.microsoft.com/en-us/download/dotnet/8.0" -ForegroundColor White
-        Write-Host "    --> Click 'Hosting Bundle' under 'ASP.NET Core Runtime 8.0'" -ForegroundColor White
+        Write-Host "    https://dotnet.microsoft.com/en-us/download/dotnet/8.0" -ForegroundColor Cyan
+        Write-Host "    --> Under 'ASP.NET Core Runtime' --> Windows --> Hosting Bundle" -ForegroundColor White
         Write-Host ""
-        Write-Host "  Install it, then re-run this script." -ForegroundColor Yellow
-        $manualStepsNeeded += ".NET 8 Hosting Bundle"
+        $manualStepsNeeded += ".NET 8 Hosting Bundle (for IIS)"
     }
 }
 Write-Host ""
