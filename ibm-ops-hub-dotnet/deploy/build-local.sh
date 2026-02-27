@@ -134,7 +134,9 @@ pushd "$FRONTEND_SRC" > /dev/null
 
 if [ ! -d "node_modules" ]; then
     echo "  Running npm install (first time, may take a few minutes)..."
-    npm install
+    # --legacy-peer-deps bypasses peer-dep version conflicts (e.g. ng2-charts
+    # pulling @angular/cdk@>=17 which npm v7+ resolves to an incompatible v21).
+    npm install --legacy-peer-deps
 fi
 
 echo "  Running ng build..."
