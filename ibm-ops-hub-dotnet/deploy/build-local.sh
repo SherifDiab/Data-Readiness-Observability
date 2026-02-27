@@ -41,16 +41,18 @@ echo ""
 echo "Checking tools..."
 
 # The macOS .NET installer puts dotnet in /usr/local/share/dotnet but doesn't
-# always add it to PATH. Check known locations and add to PATH if needed.
+# always add it to PATH. On Apple Silicon + x64 installer it lands under
+# /usr/local/share/dotnet/x64/. Check all known locations.
 if ! command -v dotnet &>/dev/null; then
     for candidate in \
+        "/usr/local/share/dotnet/x64" \
         "/usr/local/share/dotnet" \
         "$HOME/.dotnet" \
         "/usr/local/bin"
     do
         if [ -x "$candidate/dotnet" ]; then
             export PATH="$candidate:$PATH"
-            echo "  (added $candidate to PATH)"
+            echo "  (found dotnet at $candidate — added to PATH)"
             break
         fi
     done
@@ -58,18 +60,21 @@ fi
 
 if ! command -v dotnet &>/dev/null; then
     echo ""
-    echo "ERROR: dotnet not found in PATH or common macOS locations."
+    echo "ERROR: dotnet not found. Searched:"
+    echo "   /usr/local/share/dotnet/x64   <- Apple Silicon Mac + x64 installer"
+    echo "   /usr/local/share/dotnet        <- standard / Arm64 installer"
+    echo "   ~/.dotnet"
     echo ""
-    echo "  Quick fix — paste this in your terminal, then re-run the script:"
-    echo "    export PATH=\"\$PATH:/usr/local/share/dotnet\""
+    echo "  Run this to locate it:"
+    echo "    find /usr/local ~/.dotnet -name dotnet -type f 2>/dev/null"
     echo ""
-    echo "  To make it permanent, add the line above to ~/.zshrc (or ~/.bash_profile):"
-    echo "    echo 'export PATH=\"\$PATH:/usr/local/share/dotnet\"' >> ~/.zshrc"
-    echo "    source ~/.zshrc"
+    echo "  Then export that directory and re-run:"
+    echo "    export PATH=\"\$PATH:/usr/local/share/dotnet/x64\""
+    echo "    ./deploy/build-local.sh"
     echo ""
-    echo "  If you haven't installed .NET 8 SDK yet:"
+    echo "  TIP: If you have an Apple Silicon Mac (M1/M2/M3), download the"
+    echo "  Arm64 installer for best compatibility (no Rosetta needed):"
     echo "    https://dotnet.microsoft.com/en-us/download/dotnet/8.0"
-    echo "    --> macOS -> x64 or Arm64 Installer (.pkg)"
     echo ""
     exit 1
 fi
