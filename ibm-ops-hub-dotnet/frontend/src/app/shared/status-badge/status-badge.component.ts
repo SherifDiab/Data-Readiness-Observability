@@ -38,6 +38,10 @@ export class StatusBadgeComponent {
       Failed:     'bg-status-failed',
       Warning:    'bg-status-warning',
       Restarting: 'bg-status-warning pulse-dot',
+      Queued:     'bg-text-tertiary',
+      Canceled:   'bg-text-tertiary',
+      Suspended:  'bg-status-warning',
+      Unknown:    'bg-text-tertiary',
     }[this.status] ?? 'bg-text-tertiary';
   }
 }

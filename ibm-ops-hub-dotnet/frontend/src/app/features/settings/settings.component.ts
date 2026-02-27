@@ -133,7 +133,7 @@ type Feedback = { type: 'success' | 'error'; message: string } | null;
                   } @else if (field.type === 'number') {
                     <div class="flex items-center gap-3">
                       <input type="number" [(ngModel)]="values[field.key]"
-                        [min]="field.min" [max]="field.max"
+                        [min]="field.min ?? null" [max]="field.max ?? null"
                         class="w-36 bg-bg-primary border border-border-color rounded-md px-3 py-1.5 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent" />
                       @if (field.min !== undefined && field.max !== undefined) {
                         <span class="text-xs text-text-tertiary">{{ field.min }}–{{ field.max }} seconds</span>
