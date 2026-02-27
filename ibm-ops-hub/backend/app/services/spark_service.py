@@ -120,113 +120,139 @@ class SparkService(BaseService):
     # ------------------------------------------------------------------
 
     async def poll(self) -> list[NormalizedJob]:
-        """Fetch all Spark jobs and their recent runs from CPD.
+        """Fetch Spark jobs across all configured CPD projects.
+
+        Iterates over every project in ``settings.cpd_project_ids_list``,
+        queries the CPD Jobs API, and fetches the latest run for each job.
+        Job IDs are scoped as ``{project_id}/{asset_id}`` to prevent collisions
+        across projects.
 
         Returns
         -------
         list[NormalizedJob]
-            Normalised jobs with the latest run status.
+            Normalised jobs with the latest run status from all projects.
         """
         now = datetime.now(timezone.utc)
         base = self._base_url()
-        project_id = self.settings.CPD_PROJECT_ID
-        jobs: list[NormalizedJob] = []
+        all_jobs: list[NormalizedJob] = []
 
         try:
             token = await self.auth_service.get_cpd_token()
             headers = {"Authorization": f"Bearer {token}"}
+            project_ids = self.settings.cpd_project_ids_list
 
-            # --- List all jobs in the project ---
-            jobs_url = f"{base}/v2/jobs"
-            params: dict[str, Any] = {"project_id": project_id, "limit": 100}
+            self.logger.info(
+                "Spark poll — monitoring %d project(s): %s", len(project_ids), project_ids
+            )
 
-            self.logger.info("Spark poll — GET %s params=%s", jobs_url, params)
-            resp = await self.client.get(jobs_url, headers=headers, params=params)
-            resp.raise_for_status()
-            job_list: list[dict] = resp.json().get("results", [])
-
-            # --- For each job, fetch the latest runs ---
-            for job_entry in job_list:
-                metadata = job_entry.get("metadata", {})
-                job_id = metadata.get("asset_id", "")
-                job_name = metadata.get("name", "unknown")
-
-                runs_url = f"{base}/v2/jobs/{job_id}/runs"
-                runs_params: dict[str, Any] = {"project_id": project_id, "limit": 5}
-
+            for project_id in project_ids:
                 try:
-                    runs_resp = await self.client.get(
-                        runs_url, headers=headers, params=runs_params
+                    project_jobs = await self._poll_project(base, project_id, headers, now)
+                    all_jobs.extend(project_jobs)
+                    self.logger.info(
+                        "Spark poll — project=%s yielded %d jobs", project_id, len(project_jobs)
                     )
-                    runs_resp.raise_for_status()
-                    runs: list[dict] = runs_resp.json().get("results", [])
-                except httpx.HTTPStatusError as exc:
-                    self.logger.warning(
-                        "Spark — failed to fetch runs for job=%s endpoint=%s status=%s",
-                        job_id,
-                        runs_url,
-                        exc.response.status_code,
-                    )
-                    runs = []
                 except Exception as exc:
-                    self.logger.warning(
-                        "Spark — error fetching runs for job=%s endpoint=%s error=%s",
-                        job_id,
-                        runs_url,
-                        exc,
+                    self.logger.error(
+                        "Spark poll — project=%s failed: %s", project_id, exc
                     )
-                    runs = []
 
-                if runs:
-                    latest_run = runs[0]
-                    run_entity = latest_run.get("entity", {}).get("job_run", {})
-                    state = run_entity.get("state", None)
-                    started = self._parse_ts(run_entity.get("start_timestamp"))
-                    finished = self._parse_ts(run_entity.get("end_timestamp"))
-                    duration = run_entity.get("duration")
-                    run_id = latest_run.get("metadata", {}).get("asset_id", "")
-                else:
-                    state = None
-                    started = None
-                    finished = None
-                    duration = None
-                    run_id = ""
-
-                native_url = f"{self.settings.CPD_BASE_URL}/projects/{project_id}/jobs/{job_id}"
-
-                jobs.append(
-                    NormalizedJob(
-                        component=ComponentType.SPARK,
-                        job_id=job_id,
-                        job_name=job_name,
-                        status=self._map_state(state),
-                        started_at=started,
-                        finished_at=finished,
-                        duration_seconds=float(duration) if duration is not None else None,
-                        details={
-                            "run_id": run_id,
-                            "cpd_state": state,
-                            "total_runs_fetched": len(runs),
-                            "asset_ref_type": metadata.get("asset_ref_type", ""),
-                        },
-                        native_url=native_url,
-                        last_polled_at=now,
-                    )
-                )
-
-            # Cache results
-            await self.cache_results(CACHE_KEY, jobs, ttl=self.settings.SPARK_POLL_INTERVAL * 4)
-            self.logger.info("Spark poll complete — %d jobs normalised", len(jobs))
+            await self.cache_results(CACHE_KEY, all_jobs, ttl=self.settings.SPARK_POLL_INTERVAL * 4)
+            self.logger.info(
+                "Spark poll complete — %d total jobs across %d project(s)",
+                len(all_jobs), len(project_ids),
+            )
 
         except httpx.HTTPStatusError as exc:
             self.logger.error(
                 "Spark poll failed — endpoint=%s status=%s body=%s",
-                exc.request.url,
-                exc.response.status_code,
-                exc.response.text[:500],
+                exc.request.url, exc.response.status_code, exc.response.text[:500],
             )
         except Exception as exc:
             self.logger.error("Spark poll error — %s", exc, exc_info=True)
+
+        return all_jobs
+
+    async def _poll_project(
+        self,
+        base: str,
+        project_id: str,
+        headers: dict[str, str],
+        now: datetime,
+    ) -> list[NormalizedJob]:
+        """Poll a single CPD project for Spark jobs."""
+        jobs: list[NormalizedJob] = []
+        jobs_url = f"{base}/v2/jobs"
+        params: dict[str, Any] = {"project_id": project_id, "limit": 100}
+
+        self.logger.info("Spark — GET %s project=%s", jobs_url, project_id)
+        resp = await self.client.get(jobs_url, headers=headers, params=params)
+        resp.raise_for_status()
+        job_list: list[dict] = resp.json().get("results", [])
+
+        for job_entry in job_list:
+            metadata = job_entry.get("metadata", {})
+            asset_id = metadata.get("asset_id", "")
+            job_name = metadata.get("name", "unknown")
+            # Scope the ID to avoid cross-project collisions
+            scoped_id = f"{project_id}/{asset_id}"
+
+            runs_url = f"{base}/v2/jobs/{asset_id}/runs"
+            runs_params: dict[str, Any] = {"project_id": project_id, "limit": 5}
+
+            try:
+                runs_resp = await self.client.get(runs_url, headers=headers, params=runs_params)
+                runs_resp.raise_for_status()
+                runs: list[dict] = runs_resp.json().get("results", [])
+            except httpx.HTTPStatusError as exc:
+                self.logger.warning(
+                    "Spark — failed runs for job=%s project=%s status=%s",
+                    asset_id, project_id, exc.response.status_code,
+                )
+                runs = []
+            except Exception as exc:
+                self.logger.warning(
+                    "Spark — error fetching runs job=%s project=%s error=%s",
+                    asset_id, project_id, exc,
+                )
+                runs = []
+
+            if runs:
+                latest_run = runs[0]
+                run_entity = latest_run.get("entity", {}).get("job_run", {})
+                state = run_entity.get("state")
+                started = self._parse_ts(run_entity.get("start_timestamp"))
+                finished = self._parse_ts(run_entity.get("end_timestamp"))
+                duration = run_entity.get("duration")
+                run_id = latest_run.get("metadata", {}).get("asset_id", "")
+            else:
+                state, started, finished, duration, run_id = None, None, None, None, ""
+
+            native_url = (
+                f"{self.settings.CPD_BASE_URL}/projects/{project_id}/jobs/{asset_id}"
+            )
+
+            jobs.append(
+                NormalizedJob(
+                    component=ComponentType.SPARK,
+                    job_id=scoped_id,
+                    job_name=job_name,
+                    status=self._map_state(state),
+                    started_at=started,
+                    finished_at=finished,
+                    duration_seconds=float(duration) if duration is not None else None,
+                    details={
+                        "project_id": project_id,
+                        "asset_id": asset_id,
+                        "run_id": run_id,
+                        "cpd_state": state,
+                        "total_runs_fetched": len(runs),
+                        "asset_ref_type": metadata.get("asset_ref_type", ""),
+                    },
+                    native_url=native_url,
+                    last_polled_at=now,
+                )
+            )
 
         return jobs
 

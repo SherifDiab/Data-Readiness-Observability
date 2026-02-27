@@ -8,6 +8,7 @@ export const ROUTES = {
   EVENT_PROCESSING: '/event-processing',
   FLINK: '/flink',
   APIC: '/apic',
+  SETTINGS: '/settings',
 } as const;
 
 export const POLL_INTERVALS = {

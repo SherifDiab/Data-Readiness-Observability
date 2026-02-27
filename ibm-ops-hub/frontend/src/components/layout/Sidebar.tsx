@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Zap, Database, Radio, Activity, Globe } from 'lucide-react';
+import { LayoutDashboard, Zap, Database, Radio, Activity, Globe, Settings } from 'lucide-react';
 import clsx from 'clsx';
 import { ROUTES } from '../../utils/constants';
 
@@ -39,8 +39,22 @@ export default function Sidebar() {
           </NavLink>
         ))}
       </nav>
-      <div className="p-4 border-t border-border-color">
-        <p className="text-xs text-text-tertiary">v1.0.0</p>
+      <div className="p-2 border-t border-border-color">
+        <NavLink
+          to={ROUTES.SETTINGS}
+          className={({ isActive }) =>
+            clsx(
+              'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+              isActive
+                ? 'bg-accent/10 text-accent'
+                : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
+            )
+          }
+        >
+          <Settings size={18} />
+          Settings
+        </NavLink>
+        <p className="text-xs text-text-tertiary px-3 pt-2">v1.0.0</p>
       </div>
     </aside>
   );

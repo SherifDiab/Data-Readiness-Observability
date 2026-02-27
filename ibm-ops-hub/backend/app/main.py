@@ -14,6 +14,7 @@ from app.database import init_db
 from app.polling.scheduler import start_scheduler, stop_scheduler
 from app.routers import apic, dashboard, datastage, event_processing, flink, spark, ws
 from app.routers import settings_router
+from app.settings_store import load_overrides_on_startup
 from app.utils.http_client import close_http_client
 
 logging.basicConfig(
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     logger.info("Starting IBM Ops Hub...")
     await init_redis()
+    await load_overrides_on_startup()   # restore any runtime settings saved in Redis
     await init_db()
     await start_scheduler()
     logger.info("IBM Ops Hub started successfully")

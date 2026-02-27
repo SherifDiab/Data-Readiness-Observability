@@ -6,6 +6,7 @@ import DataStageJobsPage from './components/datastage/DataStageJobsPage';
 import EventProcessingPage from './components/event-processing/EventProcessingPage';
 import FlinkJobsPage from './components/flink/FlinkJobsPage';
 import ApiConnectPage from './components/apic/ApiConnectPage';
+import SettingsPage from './components/settings/SettingsPage';
 import { useWebSocket } from './hooks/useWebSocket';
 
 function App() {
@@ -20,6 +21,7 @@ function App() {
         <Route path="/event-processing" element={<EventProcessingPage />} />
         <Route path="/flink" element={<FlinkJobsPage />} />
         <Route path="/apic" element={<ApiConnectPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </DashboardLayout>
