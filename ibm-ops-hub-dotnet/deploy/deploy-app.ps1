@@ -333,6 +333,23 @@ Start-WebAppPool -Name $webPool -ErrorAction SilentlyContinue
 Start-Website    -Name "${SiteName}Frontend" -ErrorAction SilentlyContinue
 Start-Website    -Name "${SiteName}Api"      -ErrorAction SilentlyContinue
 
+# Enable ARR proxy so the frontend web.config can reverse-proxy /api/* and
+# /hubs/* to the .NET backend.  Without this, URL Rewrite rewrites with an
+# absolute HTTP URL (http://localhost:5000/...) fail with IIS error 0x8007007b
+# (ERROR_INVALID_NAME / 404.4) because there is no HTTP proxy engine.
+Write-Host "  Enabling ARR proxy..." -ForegroundColor Gray
+try {
+    Set-WebConfigurationProperty `
+        -PSPath "MACHINE/WEBROOT/APPHOST" `
+        -Filter "system.webServer/proxy" `
+        -Name "enabled" `
+        -Value $true
+    Write-Host "  [OK] ARR proxy enabled." -ForegroundColor Green
+} catch {
+    Write-Host "  [WARN] Could not enable ARR proxy automatically: $_" -ForegroundColor Yellow
+    Write-Host "  Enable it manually: IIS Manager -> Application Request Routing Cache -> Server Proxy Settings -> Enable proxy" -ForegroundColor Yellow
+}
+
 # ---------------------------------------------------------------------------
 # Done
 # ---------------------------------------------------------------------------

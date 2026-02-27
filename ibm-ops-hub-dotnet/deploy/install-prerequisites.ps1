@@ -280,7 +280,7 @@ Write-Host ""
 # ---------------------------------------------------------------------------
 # 6. IIS URL Rewrite Module
 # ---------------------------------------------------------------------------
-Write-Host "[6/6] Checking IIS URL Rewrite Module..." -ForegroundColor Yellow
+Write-Host "[6/7] Checking IIS URL Rewrite Module..." -ForegroundColor Yellow
 
 $rewriteOk = Test-Path "HKLM:\SOFTWARE\Microsoft\IIS Extensions\URL Rewrite"
 
@@ -300,6 +300,40 @@ if ($rewriteOk) {
         Write-Host "    --> Download 'URL Rewrite Module 2.1'" -ForegroundColor White
         Write-Host ""
         $manualStepsNeeded += "IIS URL Rewrite Module"
+    }
+}
+Write-Host ""
+
+# ---------------------------------------------------------------------------
+# 7. IIS Application Request Routing (ARR)
+#    Required for the frontend web.config to reverse-proxy /api/* and /hubs/*
+#    to the .NET backend.  Without ARR the rewrite rule produces a 404.4 error
+#    (IIS error 0x8007007b) because it has no HTTP proxy engine to forward the
+#    absolute rewrite URL (http://localhost:5000/...) to the backend site.
+# ---------------------------------------------------------------------------
+Write-Host "[7/7] Checking IIS Application Request Routing (ARR)..." -ForegroundColor Yellow
+
+$arrOk = Test-Path "HKLM:\SOFTWARE\Microsoft\IIS Extensions\Application Request Routing"
+
+if ($arrOk) {
+    Write-Host "  [OK] ARR already installed." -ForegroundColor Green
+} else {
+    Write-Host "  [NOT FOUND] ARR not detected." -ForegroundColor Red
+    Write-Host "  Trying auto-download..." -ForegroundColor Gray
+
+    $arrUrl  = "https://download.microsoft.com/download/E/9/8/E9849D6A-020E-47E4-9FD0-A023E99B54EB/requestRouter_amd64.msi"
+    $arrFile = "$env:TEMP\requestRouter_amd64.msi"
+
+    if (Try-Download -Url $arrUrl -OutFile $arrFile) {
+        Start-Process msiexec.exe -ArgumentList "/i", "`"$arrFile`"", "/quiet", "/norestart" -Wait -ErrorAction SilentlyContinue
+        Write-Host "  [OK] ARR installed." -ForegroundColor Green
+    } else {
+        Write-Host "  [ACTION REQUIRED] Download ARR manually:" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "    https://www.iis.net/downloads/microsoft/application-request-routing" -ForegroundColor White
+        Write-Host "    --> Download 'Application Request Routing 3.0'" -ForegroundColor White
+        Write-Host ""
+        $manualStepsNeeded += "IIS Application Request Routing (ARR 3.0)"
     }
 }
 Write-Host ""
