@@ -40,12 +40,36 @@ echo ""
 # ---------------------------------------------------------------------------
 echo "Checking tools..."
 
+# The macOS .NET installer puts dotnet in /usr/local/share/dotnet but doesn't
+# always add it to PATH. Check known locations and add to PATH if needed.
+if ! command -v dotnet &>/dev/null; then
+    for candidate in \
+        "/usr/local/share/dotnet" \
+        "$HOME/.dotnet" \
+        "/usr/local/bin"
+    do
+        if [ -x "$candidate/dotnet" ]; then
+            export PATH="$candidate:$PATH"
+            echo "  (added $candidate to PATH)"
+            break
+        fi
+    done
+fi
+
 if ! command -v dotnet &>/dev/null; then
     echo ""
-    echo "ERROR: dotnet not found."
-    echo "  Install .NET 8 SDK for macOS:"
-    echo "  https://dotnet.microsoft.com/en-us/download/dotnet/8.0"
-    echo "  --> macOS -> x64 or Arm64 Installer (.pkg)"
+    echo "ERROR: dotnet not found in PATH or common macOS locations."
+    echo ""
+    echo "  Quick fix — paste this in your terminal, then re-run the script:"
+    echo "    export PATH=\"\$PATH:/usr/local/share/dotnet\""
+    echo ""
+    echo "  To make it permanent, add the line above to ~/.zshrc (or ~/.bash_profile):"
+    echo "    echo 'export PATH=\"\$PATH:/usr/local/share/dotnet\"' >> ~/.zshrc"
+    echo "    source ~/.zshrc"
+    echo ""
+    echo "  If you haven't installed .NET 8 SDK yet:"
+    echo "    https://dotnet.microsoft.com/en-us/download/dotnet/8.0"
+    echo "    --> macOS -> x64 or Arm64 Installer (.pkg)"
     echo ""
     exit 1
 fi
