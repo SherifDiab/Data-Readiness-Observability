@@ -5,15 +5,42 @@
     Run this script ONCE on a fresh Windows Server installation.
 
 .NOTES
-    Run as Administrator in PowerShell 5.1+ or PowerShell 7+
+    Run as Administrator in PowerShell 5.1+
     Usage: .\install-prerequisites.ps1
 #>
 
 $ErrorActionPreference = "Stop"
-Write-Host "=== IBM Ops Hub — Prerequisites Installer ===" -ForegroundColor Cyan
 
-# ─── 1. Enable IIS and required features ─────────────────────────────────────
-Write-Host "`n[1/6] Enabling IIS and Windows features..." -ForegroundColor Yellow
+Write-Host ""
+Write-Host "=== IBM Ops Hub - Prerequisites Installer ===" -ForegroundColor Cyan
+Write-Host ""
+
+# ---------------------------------------------------------------------------
+# Helper: download a file with progress
+# ---------------------------------------------------------------------------
+function Download-File {
+    param([string]$Url, [string]$OutFile, [string]$Label)
+    Write-Host "  Downloading $Label ..."
+    try {
+        $wc = New-Object System.Net.WebClient
+        $wc.Headers.Add("User-Agent", "Mozilla/5.0")
+        $wc.DownloadFile($Url, $OutFile)
+    }
+    catch {
+        # Fallback to Invoke-WebRequest
+        Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing
+    }
+    if (-not (Test-Path $OutFile) -or (Get-Item $OutFile).Length -lt 1024) {
+        throw "Download failed or file is too small: $OutFile"
+    }
+    Write-Host "  Download complete." -ForegroundColor Green
+}
+
+# ---------------------------------------------------------------------------
+# 1. Enable IIS and required Windows features
+# ---------------------------------------------------------------------------
+Write-Host "[1/6] Enabling IIS and Windows features..." -ForegroundColor Yellow
+
 $features = @(
     "Web-Server",
     "Web-WebServer",
@@ -33,103 +60,163 @@ $features = @(
     "Web-Mgmt-Console",
     "Web-Scripting-Tools"
 )
+
 foreach ($f in $features) {
     Install-WindowsFeature -Name $f -IncludeManagementTools -ErrorAction SilentlyContinue | Out-Null
 }
 Write-Host "  IIS features enabled." -ForegroundColor Green
+Write-Host ""
 
-# ─── 2. Install .NET 8 Hosting Bundle ────────────────────────────────────────
-Write-Host "`n[2/6] Installing .NET 8 Hosting Bundle..." -ForegroundColor Yellow
-$dotnetBundle = "https://builds.dotnet.microsoft.com/dotnet/aspnetcore/Runtime/8.0.0/dotnet-hosting-8.0.0-win.exe"
-$dotnetInstaller = "$env:TEMP\dotnet-hosting-8.exe"
+# ---------------------------------------------------------------------------
+# 2. Install .NET 8 Hosting Bundle
+# ---------------------------------------------------------------------------
+Write-Host "[2/6] Installing .NET 8 Hosting Bundle..." -ForegroundColor Yellow
 
-if (-not (Get-Command dotnet -ErrorAction SilentlyContinue) -or
-    -not [System.Version]"8.0.0".IsCompatibleWith((& dotnet --version 2>$null))) {
-    Invoke-WebRequest -Uri $dotnetBundle -OutFile $dotnetInstaller -UseBasicParsing
-    Start-Process -FilePath $dotnetInstaller -ArgumentList "/quiet /norestart" -Wait
+$dotnetInstalled = $false
+try {
+    $dotnetVer = & dotnet --version 2>$null
+    if ($dotnetVer -and $dotnetVer.StartsWith("8.")) {
+        $dotnetInstalled = $true
+    }
+} catch {}
+
+if (-not $dotnetInstalled) {
+    # Direct download from Microsoft
+    $dotnetUrl  = "https://download.visualstudio.microsoft.com/download/pr/9d6b6b6f-8b48-4f7b-b970-4a4b59e66cf3/b21b64cf24e6d2bf13dd8a64dd4f3e91/dotnet-hosting-8.0.8-win.exe"
+    $dotnetFile = "$env:TEMP\dotnet-hosting-8.exe"
+    Download-File -Url $dotnetUrl -OutFile $dotnetFile -Label ".NET 8 Hosting Bundle"
+    Start-Process -FilePath $dotnetFile -ArgumentList "/quiet", "/norestart" -Wait
     Write-Host "  .NET 8 Hosting Bundle installed." -ForegroundColor Green
+    # Refresh PATH so dotnet is available immediately
+    $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" +
+                [System.Environment]::GetEnvironmentVariable("PATH", "User")
 } else {
-    Write-Host "  .NET 8 already installed, skipping." -ForegroundColor Gray
+    Write-Host "  .NET 8 already installed ($dotnetVer), skipping." -ForegroundColor Gray
 }
+Write-Host ""
 
-# ─── 3. Install Node.js (for Angular build) ───────────────────────────────────
-Write-Host "`n[3/6] Installing Node.js 20 LTS..." -ForegroundColor Yellow
-$nodeMsi = "https://nodejs.org/dist/v20.12.0/node-v20.12.0-x64.msi"
-$nodeInstaller = "$env:TEMP\node-setup.msi"
+# ---------------------------------------------------------------------------
+# 3. Install Node.js 20 LTS
+# ---------------------------------------------------------------------------
+Write-Host "[3/6] Installing Node.js 20 LTS..." -ForegroundColor Yellow
 
-if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-    Invoke-WebRequest -Uri $nodeMsi -OutFile $nodeInstaller -UseBasicParsing
-    Start-Process msiexec.exe -ArgumentList "/i `"$nodeInstaller`" /quiet /norestart" -Wait
-    # Refresh PATH
-    $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine")
+$nodeInstalled = $false
+try {
+    $nodeVer = & node --version 2>$null
+    if ($nodeVer) { $nodeInstalled = $true }
+} catch {}
+
+if (-not $nodeInstalled) {
+    $nodeUrl  = "https://nodejs.org/dist/v20.17.0/node-v20.17.0-x64.msi"
+    $nodeFile = "$env:TEMP\node-setup.msi"
+    Download-File -Url $nodeUrl -OutFile $nodeFile -Label "Node.js 20 LTS"
+    Start-Process msiexec.exe -ArgumentList "/i", "`"$nodeFile`"", "/quiet", "/norestart" -Wait
+    $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" +
+                [System.Environment]::GetEnvironmentVariable("PATH", "User")
     Write-Host "  Node.js installed." -ForegroundColor Green
 } else {
-    $nv = (& node --version 2>$null)
-    Write-Host "  Node.js already installed: $nv, skipping." -ForegroundColor Gray
+    Write-Host "  Node.js already installed ($nodeVer), skipping." -ForegroundColor Gray
 }
+Write-Host ""
 
-# ─── 4. Install PostgreSQL ────────────────────────────────────────────────────
-Write-Host "`n[4/6] Installing PostgreSQL 16..." -ForegroundColor Yellow
-$pgInstaller = "$env:TEMP\postgresql-16-setup.exe"
-$pgPassword  = "postgres"  # Change before production!
-$pgPort      = "5432"
-$pgDir       = "C:\Program Files\PostgreSQL\16"
+# ---------------------------------------------------------------------------
+# 4. Install PostgreSQL 16
+# ---------------------------------------------------------------------------
+Write-Host "[4/6] Installing PostgreSQL 16..." -ForegroundColor Yellow
+
+$pgDir      = "C:\Program Files\PostgreSQL\16"
+$pgPassword = "postgres"  # CHANGE THIS before production!
+$pgPort     = "5432"
 
 if (-not (Test-Path "$pgDir\bin\psql.exe")) {
-    $pgUrl = "https://sbp.enterprisedb.com/getfile.jsp?fileid=1259128"  # PostgreSQL 16 Windows installer
-    Write-Host "  Downloading PostgreSQL installer (this may take a few minutes)..."
-    Invoke-WebRequest -Uri $pgUrl -OutFile $pgInstaller -UseBasicParsing
-    Start-Process -FilePath $pgInstaller -Wait -ArgumentList @(
-        "--mode", "unattended",
-        "--superpassword", $pgPassword,
-        "--servicename", "postgresql-x64-16",
-        "--serverport", $pgPort
-    )
-    Write-Host "  PostgreSQL installed. Password: $pgPassword (CHANGE IN PRODUCTION)" -ForegroundColor Green
+    # Direct installer from EnterpriseDB (no redirect, no session cookie required)
+    $pgUrl  = "https://get.enterprisedb.com/postgresql/postgresql-16.4-1-windows-x64.exe"
+    $pgFile = "$env:TEMP\postgresql-16-setup.exe"
+    Write-Host "  Downloading PostgreSQL installer (~200 MB, please wait)..."
+    Download-File -Url $pgUrl -OutFile $pgFile -Label "PostgreSQL 16"
+
+    Write-Host "  Running PostgreSQL installer (silent mode)..."
+    $pgArgs = "--mode unattended --superpassword $pgPassword --servicename postgresql-x64-16 --serverport $pgPort"
+    Start-Process -FilePath $pgFile -ArgumentList $pgArgs -Wait
+    Write-Host "  PostgreSQL 16 installed." -ForegroundColor Green
+    Write-Host "  Superuser password: $pgPassword  <-- CHANGE IN PRODUCTION!" -ForegroundColor Yellow
 } else {
     Write-Host "  PostgreSQL already installed, skipping." -ForegroundColor Gray
 }
 
 # Create the opshub database
-$pgBin = "$pgDir\bin"
+Write-Host "  Creating 'opshub' database..."
 $env:PGPASSWORD = $pgPassword
-& "$pgBin\psql.exe" -U postgres -c "CREATE DATABASE opshub;" 2>$null
-Write-Host "  Database 'opshub' created (or already exists)." -ForegroundColor Green
+$psqlExe = "$pgDir\bin\psql.exe"
+if (Test-Path $psqlExe) {
+    & $psqlExe -U postgres -c "CREATE DATABASE opshub;" 2>&1 | Out-Null
+    Write-Host "  Database 'opshub' ready." -ForegroundColor Green
+}
+Write-Host ""
 
-# ─── 5. Install Redis (Memurai — free Redis for Windows) ─────────────────────
-Write-Host "`n[5/6] Installing Memurai (Redis for Windows)..." -ForegroundColor Yellow
-$memuraiMsi = "$env:TEMP\memurai-setup.msi"
-# Memurai Developer (free) — for production use Memurai or WSL Redis
-$memuraiUrl = "https://www.memurai.com/downloads/memurai-developer.msi"
+# ---------------------------------------------------------------------------
+# 5. Install Redis for Windows (Memurai Developer - free)
+# ---------------------------------------------------------------------------
+Write-Host "[5/6] Installing Redis (Memurai Developer edition)..." -ForegroundColor Yellow
 
-if (-not (Get-Service "Memurai" -ErrorAction SilentlyContinue)) {
+$redisService = Get-Service -Name "Memurai" -ErrorAction SilentlyContinue
+if (-not $redisService) {
     try {
-        Invoke-WebRequest -Uri $memuraiUrl -OutFile $memuraiMsi -UseBasicParsing -TimeoutSec 60
-        Start-Process msiexec.exe -ArgumentList "/i `"$memuraiMsi`" /quiet /norestart" -Wait
+        # Try winget first (available on Windows Server 2022 / Windows 10+)
+        $winget = Get-Command winget -ErrorAction SilentlyContinue
+        if ($winget) {
+            Write-Host "  Installing Memurai via winget..."
+            & winget install --id Memurai.Memurai --silent --accept-package-agreements --accept-source-agreements
+        } else {
+            # Fallback: download MSI directly
+            $memuraiUrl  = "https://www.memurai.com/downloads/memurai-developer-4.1.0.msi"
+            $memuraiFile = "$env:TEMP\memurai-setup.msi"
+            Download-File -Url $memuraiUrl -OutFile $memuraiFile -Label "Memurai Developer"
+            Start-Process msiexec.exe -ArgumentList "/i", "`"$memuraiFile`"", "/quiet", "/norestart" -Wait
+        }
         Start-Service "Memurai" -ErrorAction SilentlyContinue
         Write-Host "  Memurai (Redis) installed and started." -ForegroundColor Green
-    } catch {
-        Write-Host "  WARNING: Could not auto-install Memurai. Download manually from https://www.memurai.com" -ForegroundColor Yellow
-        Write-Host "  Alternatively, install WSL2 and run Redis in WSL." -ForegroundColor Yellow
+    }
+    catch {
+        Write-Host ""
+        Write-Host "  WARNING: Could not auto-install Memurai." -ForegroundColor Yellow
+        Write-Host "  Install Redis manually using ONE of these options:" -ForegroundColor Yellow
+        Write-Host "    Option A (recommended): winget install Memurai.Memurai" -ForegroundColor White
+        Write-Host "    Option B: Download from https://www.memurai.com/get-memurai" -ForegroundColor White
+        Write-Host "    Option C: Enable WSL2, then: wsl --install; sudo apt install redis-server" -ForegroundColor White
+        Write-Host ""
     }
 } else {
-    Write-Host "  Memurai already installed, skipping." -ForegroundColor Gray
+    Write-Host "  Memurai (Redis) already installed, skipping." -ForegroundColor Gray
 }
+Write-Host ""
 
-# ─── 6. Install URL Rewrite Module for IIS ───────────────────────────────────
-Write-Host "`n[6/6] Installing IIS URL Rewrite Module..." -ForegroundColor Yellow
-$rewriteUrl = "https://download.microsoft.com/download/1/2/8/128E2E22-C1B9-44A4-BE2A-5859ED1D4592/rewrite_amd64_en-US.msi"
-$rewriteMsi = "$env:TEMP\rewrite_amd64.msi"
+# ---------------------------------------------------------------------------
+# 6. Install IIS URL Rewrite Module
+# ---------------------------------------------------------------------------
+Write-Host "[6/6] Installing IIS URL Rewrite Module..." -ForegroundColor Yellow
 
-if (-not (Test-Path "HKLM:\SOFTWARE\Microsoft\IIS Extensions\URL Rewrite")) {
-    Invoke-WebRequest -Uri $rewriteUrl -OutFile $rewriteMsi -UseBasicParsing
-    Start-Process msiexec.exe -ArgumentList "/i `"$rewriteMsi`" /quiet /norestart" -Wait
+$rewriteKey = "HKLM:\SOFTWARE\Microsoft\IIS Extensions\URL Rewrite"
+if (-not (Test-Path $rewriteKey)) {
+    $rewriteUrl  = "https://download.microsoft.com/download/1/2/8/128E2E22-C1B9-44A4-BE2A-5859ED1D4592/rewrite_amd64_en-US.msi"
+    $rewriteFile = "$env:TEMP\rewrite_amd64.msi"
+    Download-File -Url $rewriteUrl -OutFile $rewriteFile -Label "IIS URL Rewrite Module"
+    Start-Process msiexec.exe -ArgumentList "/i", "`"$rewriteFile`"", "/quiet", "/norestart" -Wait
     Write-Host "  URL Rewrite Module installed." -ForegroundColor Green
 } else {
     Write-Host "  URL Rewrite already installed, skipping." -ForegroundColor Gray
 }
-
-Write-Host "`n=== Prerequisites installation complete! ===" -ForegroundColor Cyan
-Write-Host "Next step: run .\deploy-app.ps1 to deploy IBM Ops Hub." -ForegroundColor White
 Write-Host ""
-Write-Host "IMPORTANT: Change the PostgreSQL password in appsettings.json before production use!" -ForegroundColor Red
+
+# ---------------------------------------------------------------------------
+# Done
+# ---------------------------------------------------------------------------
+Write-Host "=== Prerequisites installation complete! ===" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "Next steps:" -ForegroundColor White
+Write-Host "  1. Close and reopen PowerShell (to refresh PATH)" -ForegroundColor White
+Write-Host "  2. Run: .\deploy-app.ps1" -ForegroundColor White
+Write-Host ""
+Write-Host "IMPORTANT: Edit appsettings.json to set your IBM credentials before running." -ForegroundColor Yellow
+Write-Host "SECURITY:  Change the PostgreSQL password from 'postgres' before production!" -ForegroundColor Red
+Write-Host ""
