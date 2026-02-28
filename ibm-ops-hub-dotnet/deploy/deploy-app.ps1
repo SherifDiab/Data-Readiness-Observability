@@ -58,6 +58,31 @@ $DeployDir = $PSScriptRoot
 
 Write-Host ""
 Write-Host "=== IBM Ops Hub Deployment ===" -ForegroundColor Cyan
+
+# ---------------------------------------------------------------------------
+# Preflight: .NET 8 Hosting Bundle
+# The Hosting Bundle installs AspNetCoreModuleV2 into IIS.  Without it the
+# API site's web.config references an unknown handler and IIS returns
+# 500.19 (0x8007000d).  Check before touching IIS so we fail fast.
+# ---------------------------------------------------------------------------
+$hostingOk = Test-Path "HKLM:\SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedhost"
+if (-not $hostingOk) {
+    Write-Host ""
+    Write-Host "ERROR: .NET 8 Hosting Bundle is not installed." -ForegroundColor Red
+    Write-Host ""
+    Write-Host "  The Hosting Bundle registers AspNetCoreModuleV2 in IIS." -ForegroundColor Yellow
+    Write-Host "  Without it, the API site fails with HTTP 500.19 (0x8007000d)." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Install it first (requires a reboot or iisreset afterwards):" -ForegroundColor White
+    Write-Host "    https://dotnet.microsoft.com/en-us/download/dotnet/8.0" -ForegroundColor Cyan
+    Write-Host "    --> ASP.NET Core Runtime 8 --> Windows --> Hosting Bundle" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  Or run install-prerequisites.ps1 which handles this automatically." -ForegroundColor White
+    Write-Host ""
+    exit 1
+}
+Write-Host "  [OK] .NET 8 Hosting Bundle detected." -ForegroundColor Green
+Write-Host ""
 Write-Host "App path  : $AppPath"
 Write-Host "API port  : $ApiPort"
 Write-Host "Frontend  : port $FrontendPort"
@@ -349,6 +374,14 @@ try {
     Write-Host "  [WARN] Could not enable ARR proxy automatically: $_" -ForegroundColor Yellow
     Write-Host "  Enable it manually: IIS Manager -> Application Request Routing Cache -> Server Proxy Settings -> Enable proxy" -ForegroundColor Yellow
 }
+
+# Reset IIS so that:
+#   - AspNetCoreModuleV2 (from the Hosting Bundle) is loaded into w3svc
+#   - ARR proxy setting takes effect globally
+#   - App pools pick up the newly deployed binaries
+Write-Host "  Running iisreset..." -ForegroundColor Gray
+& iisreset /noforce 2>&1 | ForEach-Object { Write-Host "    $_" -ForegroundColor Gray }
+Write-Host "  [OK] IIS reset complete." -ForegroundColor Green
 
 # ---------------------------------------------------------------------------
 # Done
